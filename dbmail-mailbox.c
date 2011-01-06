@@ -1294,7 +1294,7 @@ static GTree * mailbox_search(struct DbmailMailbox *self, search_key_t *s)
 		
 		memset(partial,0,sizeof(partial));
 		snprintf(partial, DEF_FRAGSIZE, db_get_sql(SQL_PARTIAL), "headervalue");
-		g_string_printf(q, "SELECT message_idnr FROM %smessages m "
+		/*g_string_printf(q, "SELECT message_idnr FROM %smessages m "
 			 "JOIN %sphysmessage p ON m.physmessage_id=p.id "
 			 "JOIN %sheadervalue v ON v.physmessage_id=p.id "
 			 "JOIN %sheadername n ON v.headername_id=n.id "
@@ -1306,7 +1306,12 @@ static GTree * mailbox_search(struct DbmailMailbox *self, search_key_t *s)
 			 dbmail_mailbox_get_id(self), 
 			 MESSAGE_STATUS_NEW, MESSAGE_STATUS_SEEN, 
 			 db_get_sql(SQL_INSENSITIVE_LIKE), s->hdrfld, 
-			 partial, db_get_sql(SQL_INSENSITIVE_LIKE), s->search);
+			 partial, db_get_sql(SQL_INSENSITIVE_LIKE), s->search);*/
+		g_string_printf(q, "SELECT %sheader_search as message_idnr FROM "
+			 "%sheader_search(%llu, '%s', '%s')",
+			 DBPFX, DBPFX,
+			 dbmail_mailbox_get_id(self),
+			 s->hdrfld, s->search);
 		break;
 
 		case IST_DATA_TEXT:
