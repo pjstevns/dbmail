@@ -342,6 +342,50 @@ CREATE TABLE dbmail_envelope (
 );
 CREATE UNIQUE INDEX dbmail_envelope_1 ON dbmail_envelope(physmessage_id, id);
 
+CREATE OR REPLACE FUNCTION dbmail_header_search(int8, varchar(100), text) RETURNS setof int8 AS $$
+DECLARE
+	param_mailbox_idnr ALIAS FOR $1;
+	param_headername ALIAS FOR $2;
+	param_headervalue ALIAS FOR $3;
+	potential_header_array int8[];
+	headername_array int8[];
+	header_match_query text;
+	matched_physmessage int8;
+	matching_physmessage int8[];
+	message_id_query text;
+	matched_message_id int8;
+BEGIN
+	potential_header_array := array(SELECT physmessage_id FROM dbmail_messages WHERE mailbox_idnr = param_mailbox_idnr and status in (0,1));
+	IF array_upper(potential_header_array, 1) is null THEN
+		RETURN;
+	END IF;
+
+	headername_array := array(SELECT id FROM dbmail_headername WHERE headername ILIKE param_headername);
+	IF array_upper(headername_array, 1) is null THEN
+		RETURN;
+	END IF;
+
+	header_match_query := 'SELECT physmessage_id FROM dbmail_headervalue WHERE physmessage_id = ANY (' || quote_literal(potential_header_array) || ') AND headername_id = ANY (' || quote_literal(headername_array) || ') AND headervalue ILIKE ''%%'' || ' || quote_literal(param_headervalue) || ' || ''%%''';
+
+	FOR matched_physmessage IN execute header_match_query LOOP
+		matching_physmessage := matching_physmessage || matched_physmessage;
+	END LOOP;
+
+	IF array_upper(matching_physmessage, 1) is null THEN
+		RETURN;
+	END IF;
+
+	message_id_query := 'SELECT message_idnr FROM dbmail_messages m WHERE mailbox_idnr = ' || quote_literal(param_mailbox_idnr) || ' AND status IN (0,1) AND physmessage_id = ANY (' || quote_literal(matching_physmessage) || ') ORDER BY message_idnr';
+
+	FOR matched_message_id IN execute message_id_query LOOP
+		return next matched_message_id;
+	END LOOP;
+
+	return;
+END;
+$$ LANGUAGE plpgsql;
+
+
 
 COMMIT;
 
