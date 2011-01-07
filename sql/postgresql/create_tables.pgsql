@@ -342,6 +342,7 @@ CREATE TABLE dbmail_envelope (
 );
 CREATE UNIQUE INDEX dbmail_envelope_1 ON dbmail_envelope(physmessage_id, id);
 
+CREATE LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION dbmail_header_search(int8, varchar(100), text) RETURNS setof int8 AS $$
 DECLARE
 	param_mailbox_idnr ALIAS FOR $1;
