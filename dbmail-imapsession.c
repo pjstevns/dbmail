@@ -1201,7 +1201,11 @@ static void _fetch_headers(struct ImapSession *self, body_fetch_t *bodyfetch, gb
 			tlist = g_list_append(tlist, g_strdup(self->args[k + bodyfetch->argstart]));
 
 		bodyfetch->hdrplist = dbmail_imap_plist_as_string(tlist);
+#ifdef USE_STORED_PROCEDURES
+		h = g_list_join((GList *)tlist,",");
+#else
 		h = g_list_join((GList *)tlist,"','");
+#endif
 		g_list_destroy(tlist);
 
 		h = g_string_ascii_down(h);
@@ -1229,10 +1233,25 @@ static void _fetch_headers(struct ImapSession *self, body_fetch_t *bodyfetch, gb
 	hi = *(u64_t *)last->data;
 
 	if (self->msg_idnr == hi)
+#ifdef USE_STORED_PROCEDURES
+		snprintf(range,RANGE_SIZE,"%llu", self->msg_idnr);
+#else
 		snprintf(range,RANGE_SIZE,"= %llu", self->msg_idnr);
+#endif
 	else
+#ifdef USE_STORED_PROCEDURES
+		snprintf(range,RANGE_SIZE,"%llu,%llu", self->msg_idnr, hi);
+#else
 		snprintf(range,RANGE_SIZE,"BETWEEN %llu AND %llu", self->msg_idnr, hi);
+#endif
 
+#ifdef USE_STORED_PROCEDURES
+	g_string_printf(q,"SELECT message_idnr,headername,headervalue "
+			"FROM %sheader_fetch(%llu,'{%s}','{%s}',%s)",
+			DBPFX,
+			self->mailbox->id, range,
+			bodyfetch->hdrnames,not?"'t'":"'f'");
+#else
 	g_string_printf(q,"SELECT message_idnr,headername,headervalue "
 			"FROM %sheadervalue v "
 			"JOIN %smessages m ON v.physmessage_id=m.physmessage_id "
@@ -1243,6 +1262,7 @@ static void _fetch_headers(struct ImapSession *self, body_fetch_t *bodyfetch, gb
 			DBPFX, DBPFX, DBPFX,
 			self->mailbox->id, range, 
 			not?"NOT":"", bodyfetch->hdrnames);
+#endif
 	
 	if (db_query(q->str)==-1)
 		return;

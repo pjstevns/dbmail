@@ -386,6 +386,70 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+CREATE OR REPLACE FUNCTION dbmail_header_fetch(int8, int8[], text[], boolean, OUT message_idnr int8, OUT headername varchar(100), OUT headervalue text) RETURNS setof record AS $$
+DECLARE
+	param_mailbox_idnr ALIAS FOR $1;
+	param_message_idnrs ALIAS FOR $2;
+	param_headernames ALIAS FOR $3;
+	param_notheaders ALIAS FOR $4;
+	r RECORD;
+	headername_id_array bigint[];
+	physmessage_query text;
+	physmessage_id_array bigint[];
+	headervalue_query text;
+	headername_not text;
+BEGIN
+	-- Create our temp tables
+	DROP TABLE IF EXISTS headername_lookup;
+	CREATE TEMPORARY TABLE headername_lookup (id bigint, temp_headername varchar(100));
+	DROP TABLE IF EXISTS physmessage_id_lookup;
+	CREATE TEMPORARY TABLE physmessage_id_lookup (temp_message_idnr bigint, physmessage_id bigint);
+
+	DROP TABLE IF EXISTS headervalue_lookup;
+	CREATE TEMPORARY TABLE headervalue_lookup (headername_id bigint, physmessage_id bigint, temp_headervalue text);
+
+	headername_not := '';
+	IF param_notheaders = 't' THEN
+		headername_not := '!';
+	END IF;
+
+	-- Fill the headername_lookup table with id & headername
+	FOR r IN execute 'SELECT id, headername FROM dbmail_headername WHERE lower(headername) ' || headername_not || '= ANY(' || quote_literal(param_headernames) || ')' LOOP
+		INSERT INTO headername_lookup VALUES (r.id, r.headername);
+		headername_id_array := headername_id_array || r.id;
+	END LOOP;
+
+	IF array_upper(headername_id_array, 1) is null THEN
+		RETURN;
+	END IF;
+
+	-- Create the physmessage_id query
+	physmessage_query := 'SELECT message_idnr, physmessage_id FROM dbmail_messages WHERE mailbox_idnr = ' || quote_literal(param_mailbox_idnr) || ' AND message_idnr ';
+	IF array_upper(param_message_idnrs, 1) = 1 THEN
+		physmessage_query := physmessage_query || '= ' || quote_literal(param_message_idnrs[1]);
+	ELSE
+		physmessage_query := physmessage_query || 'BETWEEN ' || quote_literal(param_message_idnrs[1]) || ' AND ' || quote_literal(param_message_idnrs[2]);
+	END IF;
+
+	-- Fill the physmessage_id_lookup table with message_idnr & physmessage_id
+	FOR r in execute physmessage_query LOOP
+		INSERT INTO physmessage_id_lookup VALUES (r.message_idnr, r.physmessage_id);
+		physmessage_id_array := physmessage_id_array || r.physmessage_id;
+	END LOOP;
+
+	IF array_upper(physmessage_id_array, 1) is null THEN
+		RETURN;
+	END IF;
+
+	headervalue_query := 'SELECT headername_id, physmessage_id, headervalue FROM dbmail_headervalue WHERE physmessage_id = ANY(' || quote_literal(physmessage_id_array) || ') AND headername_id = ANY(' || quote_literal(headername_id_array) || ')';
+
+	FOR r in execute headervalue_query LOOP
+		INSERT INTO headervalue_lookup VALUES (r.headername_id, r.physmessage_id, r.headervalue);
+	END LOOP;
+
+	RETURN QUERY SELECT p.temp_message_idnr, h.temp_headername, v.temp_headervalue FROM physmessage_id_lookup AS p JOIN headervalue_lookup AS v ON p.physmessage_id = v.physmessage_id JOIN headername_lookup AS h ON h.id = v.headername_id;
+END;
+$$ LANGUAGE plpgsql;
 
 
 COMMIT;
